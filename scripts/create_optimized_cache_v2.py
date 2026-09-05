@@ -4,6 +4,7 @@ import os
 import sys
 import argparse
 import cv2
+import numpy as np
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="GPU（OpenCV）を活用した超高速サムネイル生成スクリプト")
@@ -50,7 +51,10 @@ def main():
         
         try:
             # OpenCVを使って画像を読み込み（Pillowより高速）
-            img = cv2.imread(src_path)
+            # cv2.imread() は Windows 環境で日本語ファイル名を扱えないことがあるため、
+            # Python 側でバイナリとして読み込み、cv2.imdecode() で画像化する。
+            img_data = np.fromfile(src_path, dtype=np.uint8)
+            img = cv2.imdecode(img_data, cv2.IMREAD_COLOR)
             if img is None:
                 raise ValueError("画像の読み込みに失敗しました")
                 
@@ -65,9 +69,16 @@ def main():
             
             # JPEGの場合は画質と圧縮率を最適化して保存
             if ext.lower() in [".jpg", ".jpeg"]:
-                cv2.imwrite(dst_path, resized_img, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+                success, encoded = cv2.imencode(ext, resized_img, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
             else:
-                cv2.imwrite(dst_path, resized_img)
+                success, encoded = cv2.imencode(ext, resized_img)
+
+            if not success:
+                raise ValueError("画像のエンコードに失敗しました")
+
+            # cv2.imwrite() も Windows の日本語パスで失敗する場合があるため、
+            # エンコード済みバイト列を Python の tofile() で保存する。
+            encoded.tofile(dst_path)
                 
             success_count += 1
             if success_count % 100 == 0 or success_count == total_files:
